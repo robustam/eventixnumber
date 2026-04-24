@@ -1,0 +1,1129 @@
+###########################################################  ID STRING
+
+1 #############################Carpeta CONTROLLER - EventosController.java
+
+package com.eventos.eventix.controller;
+
+import com.eventos.eventix.model.EventosModel;
+import com.eventos.eventix.service.EventosService;
+import jakarta.validation.Valid;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+
+@RestController
+@RequestMapping("/eventos")
+public class EventosController {
+
+    private final EventosService svc;
+
+    public EventosController(EventosService svc) {
+        this.svc = svc;
+    }
+
+    // REGISTRAR
+    @PostMapping
+    public ResponseEntity<EventosModel> registrar(@Valid @RequestBody EventosModel r) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(svc.guardar(r));
+    }
+
+    // LISTAR TODOS
+    @GetMapping
+    public ResponseEntity<List<EventosModel>> listarTodos() {
+        return ResponseEntity.ok(svc.listarTodos());
+    }
+
+    // BUSCAR POR NOMBRE
+    @GetMapping("/nombre/{nombre}")
+    public ResponseEntity<EventosModel> buscarPorNombre(@PathVariable String nombre) {
+        return ResponseEntity.ok(svc.buscarPorNombre(nombre));
+    }
+
+    // BUSCAR POR TIPO
+    @GetMapping("/tipo/{tipoEvento}")
+    public ResponseEntity<List<EventosModel>> porTipo(@PathVariable("tipoEvento") String tipo) {
+        return ResponseEntity.ok(svc.buscarPorTipoEvento(tipo));
+    }
+
+    // BUSCAR POR UBICACIÓN
+    @GetMapping("/ubicacion/{ubicacion}")
+    public ResponseEntity<List<EventosModel>> porUbicacion(@PathVariable("ubicacion") String ub) {
+        return ResponseEntity.ok(svc.buscarPorUbicacion(ub));
+    }
+
+    // ACTUALIZAR
+    @PutMapping("/{nombre}")
+    public ResponseEntity<EventosModel> actualizar(@PathVariable String nombre, @Valid @RequestBody EventosModel r) {
+        return ResponseEntity.ok(svc.actualizar(nombre, r));
+    }
+
+    // ELIMINAR
+    @DeleteMapping("/{nombre}")
+    public ResponseEntity<Void> eliminar(@PathVariable String nombre) {
+        svc.eliminar(nombre);
+        return ResponseEntity.noContent().build(); // Retorna 204 No Content
+    }
+}
+
+2 ########################################### CARPETA EXCEPTION
+
+EventoNotFoundException.java
+
+package com.eventos.eventix.exception;
+
+public class EventoNotFoundException extends RuntimeException {
+
+    public EventoNotFoundException(String mensaje) {
+        super(mensaje);
+    }
+}
+
+GlobalExceptionHandler.java
+
+package com.eventos.eventix.exception;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import java.time.LocalDateTime;
+import java.util.*;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    // 1 — errores de validacion @Valid → 400
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> manejarValidacion(
+            MethodArgumentNotValidException ex) {
+        Map<String, String> campos = new HashMap<>();
+        for (FieldError e : ex.getBindingResult().getFieldErrors())
+            campos.put(e.getField(), e.getDefaultMessage());
+        Map<String, Object> r = new HashMap<>();
+        r.put("timestamp", LocalDateTime.now()); r.put("status", 400);
+        r.put("error", "Error de validacion"); r.put("campos", campos);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(r);
+    }
+
+    // 2 — argumento ilegal (nombre duplicado) → 400
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> manejarIllegal(IllegalArgumentException ex) {
+        Map<String, Object> r = new HashMap<>();
+        r.put("timestamp", LocalDateTime.now()); r.put("status", 400);
+        r.put("error", "Solicitud invalida"); r.put("mensaje", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(r);
+    }
+
+    // 3 — evento no encontrado → 404
+
+    @ExceptionHandler(EventoNotFoundException.class)
+
+    public ResponseEntity<Map<String, Object>> manejarNotFound(EventoNotFoundException ex) {
+
+        Map<String, Object> r = new HashMap<>();
+
+        r.put("timestamp", LocalDateTime.now()); r.put("status", 404);
+
+        r.put("error", "Evento no encontrado"); r.put("mensaje", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(r);
+
+    }
+
+
+    // 4 — error generico → 500
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> manejarGeneral(Exception ex) {
+        Map<String, Object> r = new HashMap<>();
+        r.put("timestamp", LocalDateTime.now()); r.put("status", 500);
+        r.put("error", "Error interno"); r.put("mensaje", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(r);
+    }
+}
+
+3 #################################### CARPETA MODEL - EventosModel.java
+
+package com.eventos.eventix.model;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+import jakarta.validation.constraints.*;
+import java.time.LocalDate;
+
+public class EventosModel {
+
+    private Integer id; // Identificador único numérico
+
+    @NotBlank(message = "El nombre es obligatorio")
+    private String nombre;
+
+    @NotBlank(message = "El tipo de evento es obligatorio")
+    private String tipoevento;
+
+    @NotNull(message = "La fecha no puede estar vacía")
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate fecha;
+
+    @NotBlank(message = "La ubicación es obligatoria")
+    private String ubicacion;
+
+    @NotNull(message = "La cantidad de participantes es obligatoria")
+    @Min(value = 1, message = "Mínimo 1 participante")
+    @Max(value = 50, message = "Máximo 50 participantes")
+    private Integer cantidadParticipantes;
+
+    // Constructores
+    public EventosModel() {}
+
+    public EventosModel(Integer id, String nombre, String tipoevento, LocalDate fecha, String ubicacion, Integer cantidadParticipantes) {
+        this.id = id;
+        this.nombre = nombre;
+        this.tipoevento = tipoevento;
+        this.fecha = fecha;
+        this.ubicacion = ubicacion;
+        this.cantidadParticipantes = cantidadParticipantes;
+    }
+
+    // Getters y Setters
+    public Integer getId() { return id; }
+    public void setId(Integer id) { this.id = id; }
+    public String getNombre() { return nombre; }
+    public void setNombre(String nombre) { this.nombre = nombre; }
+    public String getTipoevento() { return tipoevento; }
+    public void setTipoevento(String tipoevento) { this.tipoevento = tipoevento; }
+    public LocalDate getFecha() { return fecha; }
+    public void setFecha(LocalDate fecha) { this.fecha = fecha; }
+    public String getUbicacion() { return ubicacion; }
+    public void setUbicacion(String ubicacion) { this.ubicacion = ubicacion; }
+    public Integer getCantidadParticipantes() { return cantidadParticipantes; }
+    public void setCantidadParticipantes(Integer cantidadParticipantes) { this.cantidadParticipantes = cantidadParticipantes; }
+}
+
+4 ################################ Carpeta Repository - EventosRepository.java
+
+package com.eventos.eventix.repository;
+
+import com.eventos.eventix.model.EventosModel;
+import org.springframework.stereotype.Repository;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+
+
+
+@Repository
+public class EventosRepository {
+    private List<EventosModel> registros = new ArrayList<>();
+
+    //REGISTRAR
+    public EventosModel guardar(EventosModel registro) {
+        registros.add(registro);
+        return registro;
+    }
+
+    // LISTAR
+    public List<EventosModel> listarTodos(){
+        return registros;
+    }
+
+    //BUSCAR POR NOMBRE
+    public EventosModel buscarPorNombre (String nombre){
+        return registros.stream()
+                .filter(r->r.getNombre().equalsIgnoreCase(nombre))
+                .findFirst()
+                .orElse(null);
+    }
+
+    //BUSCAR POR TIPOS DE EVENTOS
+    public List<EventosModel> buscarPorTipoEvento(String tipo) {
+        return registros.stream()
+        .filter(r -> r.getTipoevento().equalsIgnoreCase(tipo))
+        .collect(Collectors.toList());
+    }
+
+    //BUSCAR POR UBICACION
+    public List<EventosModel> buscarPorUbicacion(String ubicacion){
+    return registros.stream()
+            .filter(r-> r.getUbicacion().equalsIgnoreCase(ubicacion))
+            .collect(Collectors.toList());
+}
+
+// ACTUALIZAR
+public EventosModel actualizar(String nombre, EventosModel act){
+    for (int i=0; i<registros.size();i++){
+        if(registros.get(i).getNombre().equalsIgnoreCase(nombre)) {
+            registros.set(i, act);
+            return act;
+        }
+    }
+    return null;
+}
+public boolean eliminar(String nombre)
+{
+    return registros.removeIf(r-> r.getNombre().equalsIgnoreCase(nombre));
+}
+}
+
+############################################## CARPETA SERVICE
+
+5 ########################################## EventosService (Interface)
+
+package com.eventos.eventix.service;
+
+import com.eventos.eventix.model.EventosModel;
+
+import java.util.List;
+
+public interface EventosService {
+
+    // REGISTRAR Y/O GUARDAR
+    EventosModel guardar(EventosModel registro);
+
+    // LISTAR
+    List<EventosModel> listarTodos();
+
+    // BUSCAR POR NOMBRE
+    EventosModel buscarPorNombre (String nombre);
+
+    // BUSCAR POR TIPO EVENTO
+    public List<EventosModel> buscarPorTipoEvento(String tipo);
+
+    // BUSCAR POR UBICACION
+    public List<EventosModel> buscarPorUbicacion(String ubicacion);
+
+    // ACTUALIZAR y/O MODIFICAR
+    public EventosModel actualizar(String nombre, EventosModel act);
+
+    //ELIMINAR
+    boolean eliminar(String nombre);
+
+}
+
+6 ################################## EventosServiceImpl.java (Implement)
+package com.eventos.eventix.service;
+
+import com.eventos.eventix.exception.EventoNotFoundException;
+import com.eventos.eventix.model.EventosModel;
+import com.eventos.eventix.repository.EventosRepository;
+import org.springframework.stereotype.Service;
+import java.util.List;
+
+@Service
+public class EventosServiceImpl implements EventosService {
+
+    private final EventosRepository repo;
+
+    public EventosServiceImpl(EventosRepository repo) {
+        this.repo = repo;
+    }
+
+    // REGISTRAR
+    @Override
+    public EventosModel guardar(EventosModel registro) {
+        if (repo.buscarPorNombre(registro.getNombre()) != null) {
+            throw new IllegalArgumentException("Ya existe el evento: " + registro.getNombre());
+        }
+        return repo.guardar(registro);
+    }
+
+    // LISTAR
+    @Override
+    public List<EventosModel> listarTodos() {
+        return repo.listarTodos();
+    }
+
+    // BUSCAR POR NOMBRE
+    @Override
+    public EventosModel buscarPorNombre(String nombre) {
+        EventosModel r = repo.buscarPorNombre(nombre);
+        if (r == null) {
+            throw new EventoNotFoundException("Evento no encontrado: " + nombre);
+        }
+        return r;
+    }
+
+    // BUSCAR POR TIPO EVENTO
+    @Override
+    public List<EventosModel> buscarPorTipoEvento(String t) {
+        return repo.buscarPorTipoEvento(t);
+    }
+
+    // BUSCAR POR UBICACION
+    @Override
+    public List<EventosModel> buscarPorUbicacion(String u) {
+        return repo.buscarPorUbicacion(u);
+    }
+
+    // ACTUALIZAR
+    @Override
+    public EventosModel actualizar(String nombre, EventosModel act) {
+        if (repo.buscarPorNombre(nombre) == null) {
+            throw new EventoNotFoundException("No existe el evento: " + nombre);
+        }
+        return repo.actualizar(nombre, act);
+    }
+
+    // ELIMINAR
+    @Override
+    public boolean eliminar(String nombre) {
+        if (repo.buscarPorNombre(nombre) == null) {
+            throw new EventoNotFoundException("Evento no encontrado: " + nombre);
+        }
+        return repo.eliminar(nombre);
+    }
+}
+
+7 ############################################### EventixApplication.java
+
+package com.eventos.eventix;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class EventixApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(EventixApplication.class, args);
+	}
+
+}
+
++++++++++++++++++++++++++++++++++++++++++++++++++++ID INTEGER
+
++++++++++++++++++++++++CARPETA CONTROLLER - EventosController.java
+
+//
+// Source code recreated from a .class file by IntelliJ IDEA
+// (powered by Fernflower decompiler)
+//
+
+package com.eventos.eventixnumber.controller;
+
+import com.eventos.eventixnumber.model.EventosModel;
+import com.eventos.eventixnumber.service.EventosService;
+import jakarta.validation.Valid;
+import java.util.List;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping({"/eventos"})
+public class EventosController {
+    private final EventosService svc;
+
+    public EventosController(EventosService svc) {
+        this.svc = svc;
+    }
+
+    @PostMapping
+    public ResponseEntity<EventosModel> crear(@RequestBody @Valid EventosModel r) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(this.svc.guardar(r));
+    }
+
+    @GetMapping
+    public ResponseEntity<List<EventosModel>> listar() {
+        return ResponseEntity.ok(this.svc.listarTodos());
+    }
+
+    @GetMapping({"/{id}"})
+    public ResponseEntity<EventosModel> obtenerPorId(@PathVariable Integer id) {
+        return ResponseEntity.ok(this.svc.buscarPorId(id));
+    }
+
+    @PutMapping({"/{id}"})
+    public ResponseEntity<EventosModel> editar(@PathVariable Integer id, @RequestBody @Valid EventosModel r) {
+        return ResponseEntity.ok(this.svc.actualizar(id, r));
+    }
+
+@DeleteMapping("/{id}")
+public ResponseEntity<Void> borrar(@PathVariable Integer id) {
+    svc.eliminar(id);
+    return ResponseEntity.noContent().build();
+}
+
+}
+
+++++++++++++++++++++++++++++++++++++++++++  CARPETA EXCEPCION
+
+++++++++++++++++++++++++++++++++++++++EventoNotFoundException.java
+
+//
+// Source code recreated from a .class file by IntelliJ IDEA
+// (powered by Fernflower decompiler)
+//
+
+package com.eventos.eventixnumber.exception;
+
+public class EventoNotFoundException extends RuntimeException {
+    public EventoNotFoundException(String mensaje) {
+        super(mensaje);
+    }
+}
+
+
+++++++++++++++++++++++++++++++++++    GLOBALEXCEPTIONHANDLER.JAVA
+
+//
+// Source code recreated from a .class file by IntelliJ IDEA
+// (powered by Fernflower decompiler)
+//
+
+package com.eventos.eventixnumber.exception;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+    @ExceptionHandler({MethodArgumentNotValidException.class})
+    public ResponseEntity<Map<String, Object>> manejarValidacion(MethodArgumentNotValidException ex) {
+        Map<String, String> erroresCampos = new HashMap();
+
+        for(FieldError error : ex.getBindingResult().getFieldErrors()) {
+            erroresCampos.put(error.getField(), error.getDefaultMessage());
+        }
+
+        Map<String, Object> respuesta = new HashMap();
+        respuesta.put("timestamp", LocalDateTime.now());
+        respuesta.put("status", HttpStatus.BAD_REQUEST.value());
+        respuesta.put("error", "Datos de entrada inválidos");
+        respuesta.put("detalles", erroresCampos);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(respuesta);
+    }
+
+    @ExceptionHandler({EventoNotFoundException.class})
+    public ResponseEntity<Map<String, Object>> manejarNoEncontrado(EventoNotFoundException ex) {
+        Map<String, Object> respuesta = new HashMap();
+        respuesta.put("timestamp", LocalDateTime.now());
+        respuesta.put("status", HttpStatus.NOT_FOUND.value());
+        respuesta.put("mensaje", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(respuesta);
+    }
+
+    @ExceptionHandler({IllegalArgumentException.class})
+    public ResponseEntity<Map<String, Object>> manejarArgumentoIlegal(IllegalArgumentException ex) {
+        Map<String, Object> respuesta = new HashMap();
+        respuesta.put("timestamp", LocalDateTime.now());
+        respuesta.put("status", HttpStatus.BAD_REQUEST.value());
+        respuesta.put("mensaje", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(respuesta);
+    }
+}
+
++++++++++++++++++++++++++++++++++++++ Carpeta MODEL - EventosModel.java
+
+//
+// Source code recreated from a .class file by IntelliJ IDEA
+// (powered by Fernflower decompiler)
+//
+
+package com.eventos.eventixnumber.model;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import java.time.LocalDate;
+
+public class EventosModel {
+    private Integer id;
+    private @NotBlank(
+    message = "El nombre no puede estar vacio"
+) String nombre;
+    private @NotBlank(
+    message = "El tipo de evento no puede estar vacio"
+) String tipoevento;
+    @JsonFormat(
+        pattern = "yyyy-MM-dd"
+    )
+    private @NotNull(
+    message = "La fecha no puede estar vacia"
+) LocalDate fecha;
+    private @NotBlank(
+    message = "La ubicación no puede estar vacia"
+) String ubicacion;
+    private @NotNull(
+    message = "La cantidad de participantes es obligatoria"
+) @Min(
+    value = 1L,
+    message = "Mínimo 1 participante"
+) @Max(
+    value = 50L,
+    message = "Máximo 50 participantes"
+) Integer cantidadParticipantes;
+
+    public EventosModel() {
+    }
+
+    public EventosModel(Integer id, String nombre, String tipoevento, LocalDate fecha, String ubicacion, Integer cantidadParticipantes) {
+        this.id = id;
+        this.nombre = nombre;
+        this.tipoevento = tipoevento;
+        this.fecha = fecha;
+        this.ubicacion = ubicacion;
+        this.cantidadParticipantes = cantidadParticipantes;
+    }
+
+    public Integer getId() {
+        return this.id;
+    }
+
+    public void setId(Integer id) {
+        this.id = id;
+    }
+
+    public String getNombre() {
+        return this.nombre;
+    }
+
+    public void setNombre(String nombre) {
+        this.nombre = nombre;
+    }
+
+    public String getTipoevento() {
+        return this.tipoevento;
+    }
+
+    public void setTipoevento(String tipoevento) {
+        this.tipoevento = tipoevento;
+    }
+
+    public LocalDate getFecha() {
+        return this.fecha;
+    }
+
+    public void setFecha(LocalDate fecha) {
+        this.fecha = fecha;
+    }
+
+    public String getUbicacion() {
+        return this.ubicacion;
+    }
+
+    public void setUbicacion(String ubicacion) {
+        this.ubicacion = ubicacion;
+    }
+
+    public Integer getCantidadParticipantes() {
+        return this.cantidadParticipantes;
+    }
+
+    public void setCantidadParticipantes(Integer cantidadParticipantes) {
+        this.cantidadParticipantes = cantidadParticipantes;
+    }
+}
+
+
+++++++++++++++++++++++++++++++++ Carpeta Repository - EventosRepository.java
+
+//
+// Source code recreated from a .class file by IntelliJ IDEA
+// (powered by Fernflower decompiler)
+//
+
+package com.eventos.eventixnumber.repository;
+
+import com.eventos.eventixnumber.model.EventosModel;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public class EventosRepository {
+    private List<EventosModel> registros = new ArrayList();
+    private Integer contadorId = 0;
+
+    public EventosModel guardar(EventosModel registro) {
+        Integer var2 = this.contadorId;
+        this.contadorId = this.contadorId + 1;
+        registro.setId(this.contadorId);
+        this.registros.add(registro);
+        return registro;
+    }
+
+    public List<EventosModel> listarTodos() {
+        return this.registros;
+    }
+
+    public EventosModel buscarPorId(Integer id) {
+        return (EventosModel)this.registros.stream().filter((r) -> r.getId().equals(id)).findFirst().orElse((Object)null);
+    }
+
+    public EventosModel buscarPorNombre(String nombre) {
+        return (EventosModel)this.registros.stream().filter((r) -> r.getNombre().equalsIgnoreCase(nombre)).findFirst().orElse((Object)null);
+    }
+
+    public List<EventosModel> buscarPorTipo(String tipo) {
+        return (List)this.registros.stream().filter((r) -> r.getTipoevento().equalsIgnoreCase(tipo)).collect(Collectors.toList());
+    }
+
+    public EventosModel actualizar(Integer id, EventosModel act) {
+        for(int i = 0; i < this.registros.size(); ++i) {
+            if (((EventosModel)this.registros.get(i)).getId().equals(id)) {
+                act.setId(id);
+                this.registros.set(i, act);
+                return act;
+            }
+        }
+
+        return null;
+    }
+
+    public boolean eliminar(Integer id) {
+        return this.registros.removeIf((r) -> r.getId().equals(id));
+    }
+}
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++Carpeta Service
+
++++++++++++++++++++++++++++++++++++++++++++++++++++EventosService.java
+
+
+package com.eventos.eventixnumber.service;
+
+import com.eventos.eventixnumber.model.EventosModel;
+import java.util.List;
+
+public interface EventosService {
+    EventosModel guardar(EventosModel registro);
+
+    List<EventosModel> listarTodos();
+
+    EventosModel buscarPorId(Integer id);
+
+    EventosModel actualizar(Integer id, EventosModel act);
+
+    void eliminar(Integer id);
+
+    List<EventosModel> buscarPorTipo(String tipo);
+}
+
+
+
++++++++++++++++++++++++++++++++++++++++++ EventosServiceImpl.java
+
+
+
+package com.eventos.eventixnumber.service;
+
+import com.eventos.eventixnumber.exception.EventoNotFoundException;
+import com.eventos.eventixnumber.model.EventosModel;
+import com.eventos.eventixnumber.repository.EventosRepository;
+import java.util.List;
+import org.springframework.stereotype.Service;
+
+@Service
+public class EventosServiceImpl implements EventosService {
+    private final EventosRepository repo;
+
+    public EventosServiceImpl(EventosRepository repo) {
+        this.repo = repo;
+    }
+
+    public EventosModel guardar(EventosModel registro) {
+        if (this.repo.buscarPorNombre(registro.getNombre()) != null) {
+            throw new IllegalArgumentException("Ya existe un evento con el nombre: " + registro.getNombre());
+        } else {
+            return this.repo.guardar(registro);
+        }
+    }
+
+    public List<EventosModel> listarTodos() {
+        return this.repo.listarTodos();
+    }
+
+    public EventosModel buscarPorId(Integer id) {
+        EventosModel evento = this.repo.buscarPorId(id);
+        if (evento == null) {
+            throw new EventoNotFoundException("Evento no encontrado con ID: " + id);
+        } else {
+            return evento;
+        }
+    }
+
+    public List<EventosModel> buscarPorTipo(String tipo) {
+        return this.repo.buscarPorTipo(tipo);
+    }
+
+    public EventosModel actualizar(Integer id, EventosModel act) {
+        if (this.repo.buscarPorId(id) == null) {
+            throw new EventoNotFoundException("No se puede actualizar: El ID " + id + " no existe.");
+        } else {
+            return this.repo.actualizar(id, act);
+        }
+    }
+
+    public void eliminar(Integer id) {
+        if (!this.repo.eliminar(id)) {
+            throw new EventoNotFoundException("No se pudo eliminar: El ID " + id + " no existe.");
+        }
+    }
+}
+
+
++++++++++++++++++++++++++++++++++++++++++++ EventixnumberAplication.java
+
+package com.eventos.eventixnumber;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class EventixnumberApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(EventixnumberApplication.class, args);
+    }
+}
+
+
+
+
+XXXXXXXXXXX                Postman para la versión ID String (puerto 8080).
+
+201 — REGISTRAR evento (POST)
+Método: POST
+URL: http://localhost:8080/eventos
+Headers: Content-Type: application/json
+Body (raw → JSON):
+json{
+  "nombre": "Conferencia Tech",
+  "tipoevento": "Conferencia",
+  "fecha": "2025-08-15",
+  "ubicacion": "Santiago",
+  "cantidadParticipantes": 30
+}
+Resultado esperado: 201 Created con el objeto creado.
+
+Registra 2 o 3 más para tener datos para las siguientes pruebas:
+json{
+  "nombre": "Taller Java",
+  "tipoevento": "Taller",
+  "fecha": "2025-09-01",
+  "ubicacion": "Valparaíso",
+  "cantidadParticipantes": 15
+}
+
+json{
+  "nombre": "Workshop Spring",
+  "tipoevento": "Taller",
+  "fecha": "2025-10-10",
+  "ubicacion": "Santiago",
+  "cantidadParticipantes": 20
+}
+
+200 — LISTAR todos (GET)
+Método: GET
+URL: http://localhost:8080/eventos
+Resultado esperado: 200 OK con la lista de todos los eventos.
+
+200 — BUSCAR por nombre (GET)
+Método: GET
+URL: http://localhost:8080/eventos/nombre/Conferencia Tech
+Resultado esperado: 200 OK con el evento encontrado.
+
+200 — BUSCAR por tipo (GET)
+Método: GET
+URL: http://localhost:8080/eventos/tipo/Taller
+Resultado esperado: 200 OK con lista de eventos de tipo Taller.
+
+200 — BUSCAR por ubicación (GET)
+Método: GET
+URL: http://localhost:8080/eventos/ubicacion/Santiago
+Resultado esperado: 200 OK con lista de eventos en Santiago.
+
+200 — ACTUALIZAR evento (PUT)
+Método: PUT
+URL: http://localhost:8080/eventos/Taller Java
+Headers: Content-Type: application/json
+Body:
+json{
+  "nombre": "Taller Java",
+  "tipoevento": "Taller Avanzado",
+  "fecha": "2025-09-05",
+  "ubicacion": "Concepción",
+  "cantidadParticipantes": 25
+}
+Resultado esperado: 200 OK con el evento actualizado.
+
+204 — ELIMINAR evento (DELETE)
+Método: DELETE
+URL: http://localhost:8080/eventos/Workshop Spring
+Resultado esperado: 204 No Content — sin body en la respuesta.
+
+400 — Validación fallida (POST)
+Método: POST
+URL: http://localhost:8080/eventos
+Body — campos vacíos o inválidos:
+json{
+  "nombre": "",
+  "tipoevento": "",
+  "fecha": "2025-08-15",
+  "ubicacion": "",
+  "cantidadParticipantes": 0
+}
+Resultado esperado: 400 Bad Request con detalle de los campos inválidos:
+json{
+  "timestamp": "...",
+  "status": 400,
+  "error": "Error de validacion",
+  "campos": {
+    "nombre": "El nombre es obligatorio",
+    "tipoevento": "El tipo de evento es obligatorio",
+    "ubicacion": "La ubicación es obligatoria",
+    "cantidadParticipantes": "Mínimo 1 participante"
+  }
+}
+
+400 — Nombre duplicado (POST)
+Método: POST
+URL: http://localhost:8080/eventos
+Body — nombre que ya existe:
+json{
+  "nombre": "Conferencia Tech",
+  "tipoevento": "Conferencia",
+  "fecha": "2025-11-01",
+  "ubicacion": "Santiago",
+  "cantidadParticipantes": 10
+}
+Resultado esperado: 400 Bad Request:
+json{
+  "timestamp": "...",
+  "status": 400,
+  "error": "Solicitud invalida",
+  "mensaje": "Ya existe el evento: Conferencia Tech"
+}
+
+404 — Buscar nombre que no existe (GET)
+Método: GET
+URL: http://localhost:8080/eventos/nombre/EventoFalso
+Resultado esperado: 404 Not Found:
+json{
+  "timestamp": "...",
+  "status": 404,
+  "error": "Evento no encontrado",
+  "mensaje": "Evento no encontrado: EventoFalso"
+}
+
+404 — Actualizar nombre que no existe (PUT)
+Método: PUT
+URL: http://localhost:8080/eventos/EventoFalso
+Body:
+json{
+  "nombre": "EventoFalso",
+  "tipoevento": "Taller",
+  "fecha": "2025-12-01",
+  "ubicacion": "Santiago",
+  "cantidadParticipantes": 10
+}
+Resultado esperado: 404 Not Found:
+json{
+  "timestamp": "...",
+  "status": 404,
+  "error": "Evento no encontrado",
+  "mensaje": "No existe el evento: EventoFalso"
+}
+
+404 — Eliminar nombre que no existe (DELETE)
+Método: DELETE
+URL: http://localhost:8080/eventos/EventoFalso
+Resultado esperado: 404 Not Found:
+json{
+  "timestamp": "...",
+  "status": 404,
+  "error": "Evento no encontrado",
+  "mensaje": "Evento no encontrado: EventoFalso"
+}
+
+📋 Orden recomendado para la prueba
+
+POST x3 (crear datos) → 201
+GET listar todos → 200
+GET por nombre → 200
+GET por tipo → 200
+GET por ubicación → 200
+PUT actualizar → 200
+DELETE eliminar → 204
+POST nombre vacío → 400
+POST nombre duplicado → 400
+GET nombre inexistente → 404
+PUT nombre inexistente → 404
+DELETE nombre inexistente → 404
+
+
+
+//////////////////la guía completa para la versión ID Integer
+
+
+201 — REGISTRAR evento (POST)
+Método: POST
+URL: http://localhost:8080/eventos
+Headers: Content-Type: application/json
+Body (raw → JSON):
+json{
+  "nombre": "Conferencia Tech",
+  "tipoevento": "Conferencia",
+  "fecha": "2025-08-15",
+  "ubicacion": "Santiago",
+  "cantidadParticipantes": 30
+}
+Resultado esperado: 201 Created — nota que el id se asigna automáticamente:
+json{
+  "id": 1,
+  "nombre": "Conferencia Tech",
+  "tipoevento": "Conferencia",
+  "fecha": "2025-08-15",
+  "ubicacion": "Santiago",
+  "cantidadParticipantes": 30
+}
+Registra 2 más para tener datos:
+json{
+  "nombre": "Taller Java",
+  "tipoevento": "Taller",
+  "fecha": "2025-09-01",
+  "ubicacion": "Valparaíso",
+  "cantidadParticipantes": 15
+}
+json{
+  "nombre": "Workshop Spring",
+  "tipoevento": "Taller",
+  "fecha": "2025-10-10",
+  "ubicacion": "Santiago",
+  "cantidadParticipantes": 20
+}
+Quedarán con id: 1, id: 2, id: 3 respectivamente.
+
+200 — LISTAR todos (GET)
+Método: GET
+URL: http://localhost:8080/eventos
+Resultado esperado: 200 OK con la lista completa de eventos, cada uno con su id.
+
+200 — BUSCAR por ID (GET)
+Método: GET
+URL: http://localhost:8080/eventos/1
+Resultado esperado: 200 OK con el evento de id 1.
+
+200 — BUSCAR por tipo (GET)
+Método: GET
+URL: http://localhost:8080/eventos/tipo/Taller
+Resultado esperado: 200 OK con lista de eventos de tipo Taller (id 2 y 3).
+
+200 — ACTUALIZAR evento (PUT)
+Método: PUT
+URL: http://localhost:8080/eventos/2
+Headers: Content-Type: application/json
+Body:
+json{
+  "nombre": "Taller Java Avanzado",
+  "tipoevento": "Taller Avanzado",
+  "fecha": "2025-09-05",
+  "ubicacion": "Concepción",
+  "cantidadParticipantes": 25
+}
+Resultado esperado: 200 OK con el evento actualizado manteniendo id: 2.
+
+204 — ELIMINAR evento (DELETE)
+Método: DELETE
+URL: http://localhost:8080/eventos/3
+Resultado esperado: 204 No Content — sin body en la respuesta.
+
+400 — Validación fallida (POST)
+Método: POST
+URL: http://localhost:8080/eventos
+Body — campos vacíos o inválidos:
+json{
+  "nombre": "",
+  "tipoevento": "",
+  "fecha": "2025-08-15",
+  "ubicacion": "",
+  "cantidadParticipantes": 0
+}
+Resultado esperado: 400 Bad Request:
+json{
+  "timestamp": "...",
+  "status": 400,
+  "error": "Datos de entrada inválidos",
+  "detalles": {
+    "nombre": "El nombre no puede estar vacio",
+    "tipoevento": "El tipo de evento no puede estar vacio",
+    "ubicacion": "La ubicación no puede estar vacia",
+    "cantidadParticipantes": "Mínimo 1 participante"
+  }
+}
+
+400 — Nombre duplicado (POST)
+Método: POST
+URL: http://localhost:8080/eventos
+Body — nombre que ya existe:
+json{
+  "nombre": "Conferencia Tech",
+  "tipoevento": "Conferencia",
+  "fecha": "2025-11-01",
+  "ubicacion": "Santiago",
+  "cantidadParticipantes": 10
+}
+Resultado esperado: 400 Bad Request:
+json{
+  "timestamp": "...",
+  "status": 400,
+  "mensaje": "Ya existe un evento con el nombre: Conferencia Tech"
+}
+
+404 — Buscar ID que no existe (GET)
+Método: GET
+URL: http://localhost:8080/eventos/99
+Resultado esperado: 404 Not Found:
+json{
+  "timestamp": "...",
+  "status": 404,
+  "mensaje": "Evento no encontrado con ID: 99"
+}
+
+404 — Actualizar ID que no existe (PUT)
+Método: PUT
+URL: http://localhost:8080/eventos/99
+Body:
+json{
+  "nombre": "Evento Fantasma",
+  "tipoevento": "Taller",
+  "fecha": "2025-12-01",
+  "ubicacion": "Santiago",
+  "cantidadParticipantes": 10
+}
+Resultado esperado: 404 Not Found:
+json{
+  "timestamp": "...",
+  "status": 404,
+  "mensaje": "No se puede actualizar: El ID 99 no existe."
+}
+
+404 — Eliminar ID que no existe (DELETE)
+Método: DELETE
+URL: http://localhost:8080/eventos/99
+Resultado esperado: 404 Not Found:
+json{
+  "timestamp": "...",
+  "status": 404,
+  "mensaje": "No se pudo eliminar: El ID 99 no existe."
+}
+
+
